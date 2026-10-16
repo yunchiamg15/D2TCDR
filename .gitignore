@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/
+dataset/
+saved_model/
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+log/
+logs/
+*.log
+.env
