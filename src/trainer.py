@@ -141,195 +141,6 @@ def pad_or_truncate_sequence(seq, max_len):
         + real_items
     )
 
-def augment_tail_sequence(
-    seq,
-    max_len,
-    drop_probability,
-    preserve_recent,
-    rng
-):
-    """
-    對 Unpopular-seen target 的歷史 sequence
-    做 context dropout。
-    規則：
-    1. 只刪除較早的歷史 item
-    2. 最近 preserve_recent 個 item 固定保留
-    3. 不打亂 item 順序
-    4. 不修改 ground-truth next
-    """
-    if not 0 <= drop_probability <= 1:
-        raise ValueError(
-            'tail_drop_probability must be between 0 and 1.'
-        )
-    if preserve_recent < 1:
-        raise ValueError(
-            'tail_preserve_recent must be at least 1.'
-        )
-    real_items = [
-        int(item)
-        for item in seq
-        if int(item) != 0
-    ]
-    # 序列太短，沒有較早 item 可以刪除
-    if len(real_items) <= preserve_recent:
-        return pad_or_truncate_sequence(
-            real_items,
-            max_len
-        )
-    older_items = real_items[:-preserve_recent]
-    recent_items = real_items[-preserve_recent:]
-    # 只對較舊的 item 做 dropout
-    kept_older_items = []
-    dropped_any_item = False
-    for item in older_items:
-        if rng.random() < drop_probability:
-            dropped_any_item = True
-        else:
-            kept_older_items.append(item)
-    # 若這次剛好一個都沒刪，強制隨機刪除一個較舊 item
-    if not dropped_any_item and len(older_items) > 0:
-        drop_index = rng.randrange(
-            len(older_items)
-        )
-        kept_older_items = (
-            older_items[:drop_index]
-            + older_items[drop_index + 1:]
-        )
-    augmented_items = (
-        kept_older_items
-        + recent_items
-    )
-    return pad_or_truncate_sequence(
-        augmented_items,
-        max_len
-    )
-
-def build_doubled_unpopular_seen_train_data(
-    train_data,
-    unpopular_seen_items,
-    max_len,
-    drop_probability,
-    preserve_recent,
-    random_seed
-):
-    """
-    保留所有原始 training rows。
-    對每一筆 next 屬於 Unpopular-seen 的資料，
-    額外產生一筆 context-dropout copy。
-    Popular：
-        只保留原始資料。
-    Unpopular-seen：
-        一筆原始資料 + 一筆 augmented 資料。
-    """
-    original_data = (
-        train_data
-        .copy()
-        .reset_index(drop=True)
-    )
-    # 用來辨認原始資料與 augmented copy
-    original_data['is_augmented'] = 0
-    rng = random.Random(random_seed)
-    augmented_rows = []
-    unchanged_augmented_count = 0
-    for _, row in original_data.iterrows():
-        target_item = int(row['next'])
-        # 只對 Unpopular-seen target 新增 copy
-        if target_item not in unpopular_seen_items:
-            continue
-        augmented_row = row.copy()
-        original_seq = list(row['seq'])
-        normalized_original_seq = (
-            pad_or_truncate_sequence(
-                original_seq,
-                max_len
-            )
-        )
-        augmented_seq = augment_tail_sequence(
-            seq=original_seq,
-            max_len=max_len,
-            drop_probability=drop_probability,
-            preserve_recent=preserve_recent,
-            rng=rng
-        )
-        if augmented_seq == normalized_original_seq:
-            unchanged_augmented_count += 1
-        # 只修改 sequence
-        augmented_row['seq'] = augmented_seq
-        # ground-truth next 維持原樣
-        augmented_row['next'] = target_item
-        if 'len_seq' in original_data.columns:
-            augmented_row['len_seq'] = sum(
-                int(item) != 0
-                for item in augmented_seq
-            )
-        augmented_row['is_augmented'] = 1
-        augmented_rows.append(
-            augmented_row
-        )
-    augmented_data = pd.DataFrame(
-        augmented_rows,
-        columns=original_data.columns
-    )
-    doubled_train_data = pd.concat(
-        [
-            original_data,
-            augmented_data
-        ],
-        ignore_index=True
-    )
-    # 打亂原始與 augmented rows
-    doubled_train_data = (
-        doubled_train_data
-        .sample(
-            frac=1,
-            random_state=random_seed
-        )
-        .reset_index(drop=True)
-    )
-    original_tail_count = (
-        original_data['next']
-        .astype(int)
-        .isin(unpopular_seen_items)
-        .sum()
-    )
-    final_tail_count = (
-        doubled_train_data['next']
-        .astype(int)
-        .isin(unpopular_seen_items)
-        .sum()
-    )
-    stats = {
-        'original_training_samples': (
-            len(original_data)
-        ),
-        'original_tail_samples': int(
-            original_tail_count
-        ),
-        'augmented_tail_copies': (
-            len(augmented_data)
-        ),
-        'final_training_samples': (
-            len(doubled_train_data)
-        ),
-        'final_tail_samples': int(
-            final_tail_count
-        ),
-        'original_tail_ratio': round(
-            original_tail_count
-            / len(original_data),
-            4
-        ),
-        'final_tail_ratio': round(
-            final_tail_count
-            / len(doubled_train_data),
-            4
-        ),
-        'unchanged_augmented_sequences': (
-            unchanged_augmented_count
-        )
-    }
-    return doubled_train_data, stats
-
 def per_sample_metrics(scores, labels, ks):
     """
     計算每一筆 test sample 個別的 HR@K 與 NDCG@K。
@@ -407,75 +218,6 @@ def finalize_metric_sums(
         for key, value in metric_sums.items()
     }
 
-def perturb_sequence_batch(
-    sequences,
-    targets,
-    unpopular_seen_items,
-    args,
-    rng,
-):
-    """
-    B1/B2/B3：動態修改當次訓練輸入。
-    不新增資料，不修改 next，不改變 item 順序。
-    """
-    variant = args.sequence_variant
-    probability = args.sequence_aug_prob
-    preserve_recent = args.sequence_preserve_recent
-    output_sequences = []
-    eligible_count = 0
-    changed_count = 0
-    for seq, target in zip(sequences, targets):
-        original_seq = list(seq)
-        real_items = [
-            int(item)
-            for item in original_seq
-            if int(item) != 0
-        ]
-        if variant == 'b3':
-            eligible = True
-        elif variant in ('b1', 'b2'):
-            eligible = int(target) in unpopular_seen_items
-        else:
-            eligible = False
-        # 只有歷史夠長才允許修改
-        if not eligible or len(real_items) <= preserve_recent:
-            output_sequences.append(original_seq)
-            continue
-        eligible_count += 1
-        # 未抽中：本次使用原始 sequence
-        if rng.random() >= probability:
-            output_sequences.append(original_seq)
-            continue
-        if variant in ('b1', 'b3'):
-            # 最近 preserve_recent 個 item 不可刪除
-            older_count = len(real_items) - preserve_recent
-            remove_index = rng.randrange(older_count)
-        elif variant == 'b2':
-            # 只刪最舊一個
-            remove_index = 0
-        modified_items = (
-            real_items[:remove_index]
-            + real_items[remove_index + 1:]
-        )
-        modified_seq = pad_or_truncate_sequence(
-            modified_items,
-            args.max_len,
-        )
-        output_sequences.append(modified_seq)
-        changed_count += 1
-    stats = {
-        'batch_size': len(targets),
-        'eligible_samples': eligible_count,
-        'changed_samples': changed_count,
-        'changed_ratio': round(
-            changed_count / len(targets), 4
-        ) if len(targets) else 0.0,
-        'changed_ratio_among_eligible': round(
-            changed_count / eligible_count, 4
-        ) if eligible_count else None,
-    }
-    return output_sequences, stats
-
 def calculate_hpr(seq, popular_items):
     history = [
         int(item)
@@ -489,6 +231,63 @@ def calculate_hpr(seq, popular_items):
         / len(history)
     )
 
+def build_item_cooccurrence_candidates(
+    train_data,
+    min_cooccurrence=2,
+):
+    """
+    只使用原始 Training Set 的 seq 建立相關候選。
+
+    每筆 history 內先去重：
+    c(i)   = 包含 i 的 history 數量
+    c(i,j) = 同時包含 i、j 的 history 數量
+
+    similarity = c(i,j) / sqrt(c(i) * c(j))
+    """
+    if min_cooccurrence < 1:
+        raise ValueError('min_cooccurrence must be at least 1')
+
+    item_counts = Counter()
+    pair_counts = Counter()
+
+    for seq in train_data['seq']:
+        items = sorted({
+            int(item)
+            for item in seq
+            if int(item) != 0
+        })
+
+        item_counts.update(items)
+
+        for offset, left in enumerate(items):
+            for right in items[offset + 1:]:
+                pair_counts[(left, right)] += 1
+
+    candidates = {}
+
+    for (left, right), support in pair_counts.items():
+        if support < min_cooccurrence:
+            continue
+
+        similarity = support / (
+            item_counts[left] * item_counts[right]
+        ) ** 0.5
+
+        candidates.setdefault(left, []).append(
+            (right, similarity)
+        )
+        candidates.setdefault(right, []).append(
+            (left, similarity)
+        )
+
+    # 相似度高者優先；同分時依 item ID 排序。
+    for item in candidates:
+        candidates[item].sort(
+            key=lambda pair: (-pair[1], pair[0])
+        )
+
+    return candidates
+
 def build_partial_tail_replay_data(
     train_data,
     unpopular_seen_items,
@@ -496,14 +295,37 @@ def build_partial_tail_replay_data(
     random_seed,
     popular_items,
     strategy='random',
+    replay_variant='none',
+    preserve_recent=2,
+    replacement_topk=10,
+    replacement_min_cooccurrence=2,
 ):
     """
-    保留全部原始資料。
-    固定選取部分 Tail rows，各新增一份完整副本。
-    不修改 seq、next 或 len_seq。
+    保留全部原始資料，選取部分 Tail 樣本各新增一份副本。
+
+    none：完整副本。
+    b1：刪除副本中一個較早的 item。
+    b2：刪除副本中一個較早的 Popular item。
+
+    保留最後 preserve_recent 個有效 item，next 不變。
     """
     if not 0 <= replay_ratio <= 1:
         raise ValueError('replay_ratio must be between 0 and 1')
+
+    if replay_variant not in ('none', 'b1', 'b2', 'b3'):
+        raise ValueError('Unknown replay_variant: ' + replay_variant)
+
+    if preserve_recent < 2:
+        raise ValueError('preserve_recent must be at least 2')
+
+    if replacement_topk < 1 or replacement_min_cooccurrence < 1:
+        raise ValueError(
+                'Replacement topk and min_cooccurrence must be positive'
+        )
+    
+    if train_data.empty:
+        raise ValueError('Training data must not be empty')
+
     original_data = train_data.copy().reset_index(drop=True)
     original_data['is_augmented'] = 0
     tail_mask = (
@@ -549,6 +371,101 @@ def build_partial_tail_replay_data(
     # 複製 list，避免副本與原始 row 共用同一個 seq 物件
     replay_data['seq'] = replay_data['seq'].apply(list)
     replay_data['is_augmented'] = 1
+    # 使用獨立亂數，不影響選樣與模型訓練的亂數。
+    replay_rng = random.Random(random_seed + 2000)
+
+    modified_count = 0
+    short_history_count = 0
+    no_older_popular_count = 0
+
+    no_replacement_candidate_count = 0
+    replacement_candidates = {}
+
+    if replay_variant == 'b3' and replay_count > 0:
+        replacement_candidates = build_item_cooccurrence_candidates(
+            train_data=train_data,
+            min_cooccurrence=replacement_min_cooccurrence,
+        )
+    
+    for row_id in replay_data.index:
+        # 原始 B：完整副本，不做修改。
+        if replay_variant == 'none':
+            continue
+
+        history = [
+            int(item)
+            for item in replay_data.at[row_id, 'seq']
+            if int(item) != 0
+        ]
+
+        # 最後 preserve_recent 個有效 item 不可刪除。
+        older_count = len(history) - preserve_recent
+
+        if older_count <= 0:
+            short_history_count += 1
+            continue
+
+        # B1：所有較早位置都可選。
+        # B2：只有較早的 Popular item 可選。
+        candidates = [
+            pos
+            for pos in range(older_count)
+            if replay_variant == 'b1'
+            or history[pos] in popular_items
+        ]
+
+        # B2 找不到較早的 Popular item，保留完整副本。
+        if not candidates:
+            no_older_popular_count += 1
+            continue
+
+        remove_pos = replay_rng.choice(candidates)
+
+        if replay_variant == 'b3':
+            old_item = history[remove_pos]
+
+            # 排除目前 history 已有的 item、next 和 padding。
+            blocked = set(history)
+            blocked.add(int(replay_data.at[row_id, 'next']))
+            blocked.add(0)
+
+            # 先排除不允許的 item，再取前 K 個相關候選。
+            eligible_items = [
+                item
+                for item, similarity
+                in replacement_candidates.get(old_item, [])
+                if item not in blocked
+            ][:replacement_topk]
+
+            # 選中的位置沒有可靠候選，保留完整副本。
+            if not eligible_items:
+                no_replacement_candidate_count += 1
+                continue
+
+            modified = list(history)
+            modified[remove_pos] = replay_rng.choice(
+                eligible_items
+            )
+
+        else:
+            # B1／B2：維持原本刪除操作。
+            modified = (
+                history[:remove_pos]
+                + history[remove_pos + 1:]
+            )
+
+        # 保持原本的輸入長度，左側補 0。
+        padded_length = len(replay_data.at[row_id, 'seq'])
+
+        replay_data.at[row_id, 'seq'] = pad_or_truncate_sequence(
+            modified,
+            padded_length,
+        )
+
+        if 'len_seq' in replay_data.columns:
+            replay_data.at[row_id, 'len_seq'] = len(modified)
+
+        modified_count += 1
     final_data = pd.concat(
         [original_data, replay_data],
         ignore_index=True,
@@ -568,7 +485,31 @@ def build_partial_tail_replay_data(
         'final_tail_ratio': round(
             final_tail_count / len(final_data), 4
         ),
-        'sequence_modified': False,
+        'sequence_modified': modified_count > 0,
+        'tail_replay_variant': replay_variant,
+        'preserve_recent': preserve_recent,
+        'modified_copies': modified_count,
+        'unchanged_copies': replay_count - modified_count,
+        'short_history_copies': short_history_count,
+        'no_older_popular_copies': no_older_popular_count,
+        'modification_rate': (
+            modified_count / replay_count
+            if replay_count else 0.0
+        ),
+                'no_replacement_candidate_copies': (
+            no_replacement_candidate_count
+        ),
+        'replaced_copies': (
+            modified_count if replay_variant == 'b3' else 0
+        ),
+        'replacement_candidate_items': len(
+            replacement_candidates
+        ),
+        'replacement_topk': replacement_topk,
+        'replacement_min_cooccurrence': (
+            replacement_min_cooccurrence
+        ),
+        
         'tail_replay_strategy': strategy,
         'all_tail_hpr_mean': (
             round(float(tail_hprs.mean()), 4)
@@ -627,93 +568,39 @@ def model_train(train_data, val_data, test_data, con_data, model_joint, args, lo
     bad_count = 0
     # 先保留一份初始模型，避免 best_model 尚未建立
     best_model = copy.deepcopy(model_joint)
-    # A、B1、B2、B3 使用原始資料筆數；
-    # 只有原始 B 會新增 Tail 副本。
     training_data_for_sampling = train_data
-    unpopular_seen_items_for_augmentation = set()
-    augmentation_stats = None
-    sequence_variant = getattr(
-        args, 'sequence_variant', 'none'
-    )
-    # 獨立亂數，不影響原本 batch sampling 的 seed
-    sequence_rng = random.Random(args.random_seed + 1000)
-    if not pretrain_flag:
-        if (
-            args.enable_tail_augmentation
-            and sequence_variant != 'none'
-        ):
-            raise ValueError(
-                'Tail duplication and B1/B2/B3 '
-                'cannot be enabled together.'
-            )
-        # 必須從原始 training data 定義 Popular/Tail
+
+    # 只在 Target 訓練階段建立 Tail 副本。
+    if not pretrain_flag and args.enable_tail_replay:
         (
-            popular_items_for_augmentation,
-            unpopular_seen_items_for_augmentation,
-            observed_train_items_for_augmentation,
-            item_counter_for_augmentation,
+            popular_items,
+            unpopular_seen_items,
+            _,
+            _,
         ) = build_item_popularity_groups(
             train_data=train_data,
             popular_ratio=args.popular_ratio,
         )
-        if getattr(args, 'enable_tail_replay', False):
-            # B4：部分 Tail 新增完整副本
-            (
-                training_data_for_sampling,
-                augmentation_stats,
-            ) = build_partial_tail_replay_data(
+
+        training_data_for_sampling, replay_stats = (
+            build_partial_tail_replay_data(
                 train_data=train_data,
-                unpopular_seen_items=(
-                    unpopular_seen_items_for_augmentation
-                ),
+                unpopular_seen_items=unpopular_seen_items,
                 replay_ratio=args.tail_replay_ratio,
                 random_seed=args.random_seed,
-                popular_items=popular_items_for_augmentation,
-                strategy=getattr(
-                    args,
-                    'tail_replay_strategy',
-                    'random',
-                )
-            )
-            print("B4 Tail replay setup:", augmentation_stats)
-            logger.info(
-                "B4 Tail replay setup: %s",
-                augmentation_stats,
-            )
-        elif args.enable_tail_augmentation:
-            # 原始 B：這個分支內原有程式全部保留
-            (
-                training_data_for_sampling,
-                augmentation_stats,
-            ) = build_doubled_unpopular_seen_train_data(
-                train_data=train_data,
-                unpopular_seen_items=(
-                    unpopular_seen_items_for_augmentation
+                popular_items=popular_items,
+                strategy=args.tail_replay_strategy,
+                replay_variant=args.tail_replay_variant,
+                preserve_recent=args.tail_replay_preserve_recent,
+                replacement_topk=args.tail_replacement_topk,
+                replacement_min_cooccurrence=(
+                    args.tail_replacement_min_cooccurrence
                 ),
-                max_len=args.max_len,
-                drop_probability=args.tail_drop_probability,
-                preserve_recent=args.tail_preserve_recent,
-                random_seed=args.random_seed,
             )
-            print("Original B augmentation:", augmentation_stats)
-            logger.info(
-                "Original B augmentation: %s",
-                augmentation_stats,
-            )
-        else:
-            # A、B1、B2、B3 都不新增副本
-            setup = {
-                'sequence_variant': sequence_variant,
-                'original_training_samples': len(train_data),
-                'final_training_samples': len(
-                    training_data_for_sampling
-                ),
-                'sequence_aug_prob': getattr(
-                    args, 'sequence_aug_prob', 0.2
-                ),
-            }
-            print("Sequence experiment setup:", setup)
-            logger.info("Sequence experiment setup: %s", setup)
+        )
+
+        print('Tail replay setup:', replay_stats)
+        logger.info('Tail replay setup: %s', replay_stats)
     num_rows = training_data_for_sampling.shape[0]
     num_batches = int(num_rows / args.batch_size)
     for epoch_temp in range(epochs):
@@ -726,69 +613,12 @@ def model_train(train_data, val_data, test_data, con_data, model_joint, args, lo
                 + j
             )
             batch_df = training_data_for_sampling.sample(
-            n=args.batch_size,
-            random_state=batch_seed
+                n=args.batch_size,
+                random_state=batch_seed,
             )
-            if (
-                not pretrain_flag
-                and args.enable_tail_augmentation
-                and epoch_temp == 0
-                and j < 3
-            ):
-                batch_tail_count = (
-                batch_df['next']
-                .astype(int)
-                .isin(unpopular_seen_items_for_augmentation)
-                .sum()
-                )
-                batch_augmented_count = int(
-                    batch_df['is_augmented'].sum()
-                )
-                batch_check = {
-                    'batch_size': len(batch_df),
-                    'tail_samples': int(batch_tail_count),
-                    'augmented_samples': batch_augmented_count,
-                    'tail_ratio': round(
-                        batch_tail_count / len(batch_df),
-                        4
-                    ),
-                    'augmented_ratio': round(
-                        batch_augmented_count / len(batch_df),
-                        4
-                    )
-                }
-                print("Tail Dataset Batch Check:", batch_check)
-                logger.info(
-                    "Tail Dataset Batch Check: %s",
-                    batch_check
-                )
-            batch = batch_df.to_dict()
-            seq = list(batch['seq'].values())
-            target = list(batch['next'].values())
-            # 只修改 Target training 的輸入
-            if (
-                not pretrain_flag
-                and sequence_variant in ('b1', 'b2', 'b3')
-            ):
-                seq, sequence_stats = perturb_sequence_batch(
-                    sequences=seq,
-                    targets=target,
-                    unpopular_seen_items=(
-                        unpopular_seen_items_for_augmentation
-                    ),
-                    args=args,
-                    rng=sequence_rng,
-                )
-                if epoch_temp == 0 and j < 3:
-                    print(
-                        f"{sequence_variant.upper()} batch check:",
-                        sequence_stats,
-                    )
-                    logger.info(
-                        "%s batch check: %s",
-                        sequence_variant.upper(),
-                        sequence_stats,
-                    )
+
+            seq = batch_df['seq'].tolist()
+            target = batch_df['next'].tolist()
             optimizer.zero_grad()
             seq = torch.LongTensor(seq)
             target = (torch.LongTensor(target)).unsqueeze(1)

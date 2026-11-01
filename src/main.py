@@ -84,48 +84,66 @@ parser.add_argument(
 )
 parser.add_argument(
     '--tail_replay_strategy',
-    default='random',
+    default='high_hpr',
     choices=['random', 'high_hpr'],
     help='Tail replay selection: random or high_hpr',
 )
 
-# Retained because the current trainer.py references these attributes
-parser.add_argument('--enable_tail_augmentation', action='store_true')
-parser.add_argument('--tail_drop_probability', type=float, default=0.2)
-parser.add_argument('--tail_preserve_recent', type=int, default=2)
+
+# Current experiments: only modify the newly added replay copies.
 parser.add_argument(
-    '--sequence_variant',
+    '--tail_replay_variant',
     default='none',
     choices=['none', 'b1', 'b2', 'b3'],
+    help='none: full copy; b1: delete one older item; '
+         'b2: delete one older Popular item',
 )
-parser.add_argument('--sequence_aug_prob', type=float, default=0.2)
-parser.add_argument('--sequence_preserve_recent', type=int, default=2)
+parser.add_argument(
+    '--tail_replay_preserve_recent',
+    type=int,
+    default=2,
+    help='Protect the last N valid history items (minimum 2)',
+)
+
+# The previous trainer.py still reads these two attributes directly.
+# Disable the old experiment branches; they are no longer CLI options.
+parser.set_defaults(
+    enable_tail_augmentation=False,
+    sequence_variant='none',
+)
+
+parser.add_argument(
+    '--tail_replacement_topk',
+    type=int,
+    default=10,
+    help='Sample a replacement from the top K eligible related items',
+)
+
+parser.add_argument(
+    '--tail_replacement_min_cooccurrence',
+    type=int,
+    default=2,
+    help='Minimum number of training histories containing both items',
+)
 
 args = parser.parse_args()
+
+if args.tail_replacement_topk < 1:
+    parser.error('--tail_replacement_topk must be at least 1')
+
+if args.tail_replacement_min_cooccurrence < 1:
+    parser.error('--tail_replacement_min_cooccurrence must be at least 1')
 
 if not 0 <= args.tail_replay_ratio <= 1:
     parser.error('--tail_replay_ratio must be between 0 and 1')
 
-if args.enable_tail_replay and (
-    args.enable_tail_augmentation
-    or args.sequence_variant != 'none'
-):
+if args.tail_replay_preserve_recent < 2:
+    parser.error('--tail_replay_preserve_recent must be at least 2')
+
+if args.tail_replay_variant != 'none' and not args.enable_tail_replay:
     parser.error(
-        'Tail replay cannot be combined with '
-        'original B augmentation or B1/B2/B3'
+        '--tail_replay_variant b1/b2/b3 requires --enable_tail_replay'
     )
-
-if args.enable_tail_augmentation and args.sequence_variant != 'none':
-    parser.error(
-        '--enable_tail_augmentation cannot be combined with '
-        '--sequence_variant b1/b2/b3'
-    )
-
-if not 0 <= args.sequence_aug_prob <= 1:
-    parser.error('--sequence_aug_prob must be between 0 and 1')
-
-if args.sequence_preserve_recent < 2:
-    parser.error('--sequence_preserve_recent must be at least 2')
 
 log_dir = os.path.join(
     args.log_file,
@@ -297,13 +315,11 @@ def main(args):
     experiment_message = (
         f"Target experiment: "
         f"model_name={args.model_name}, "
-        f"tail_augmentation={args.enable_tail_augmentation}, "
         f"tail_replay={args.enable_tail_replay}, "
         f"tail_replay_ratio={args.tail_replay_ratio}, "
         f"tail_replay_strategy={args.tail_replay_strategy}, "
-        f"sequence_variant={args.sequence_variant}, "
-        f"sequence_aug_prob={args.sequence_aug_prob}, "
-        f"preserve_recent={args.sequence_preserve_recent}"
+        f"tail_replay_variant={args.tail_replay_variant}, "
+        f"preserve_recent={args.tail_replay_preserve_recent}"
     )
     print(experiment_message)
     logger.info(experiment_message)
