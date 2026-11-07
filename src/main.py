@@ -90,14 +90,6 @@ parser.add_argument(
 )
 
 
-# Current experiments: only modify the newly added replay copies.
-parser.add_argument(
-    '--tail_replay_variant',
-    default='none',
-    choices=['none', 'b1', 'b2', 'b3'],
-    help='none: full copy; b1: delete one older item; '
-         'b2: delete one older Popular item',
-)
 parser.add_argument(
     '--tail_replay_preserve_recent',
     type=int,
@@ -105,18 +97,12 @@ parser.add_argument(
     help='Protect the last N valid history items (minimum 2)',
 )
 
-# The previous trainer.py still reads these two attributes directly.
-# Disable the old experiment branches; they are no longer CLI options.
-parser.set_defaults(
-    enable_tail_augmentation=False,
-    sequence_variant='none',
-)
 
 parser.add_argument(
     '--tail_replacement_topk',
     type=int,
     default=10,
-    help='Sample a replacement from the top K eligible related items',
+    help='Keep top K legal candidates; B3-Top1 selects the first',
 )
 
 parser.add_argument(
@@ -140,10 +126,6 @@ if not 0 <= args.tail_replay_ratio <= 1:
 if args.tail_replay_preserve_recent < 2:
     parser.error('--tail_replay_preserve_recent must be at least 2')
 
-if args.tail_replay_variant != 'none' and not args.enable_tail_replay:
-    parser.error(
-        '--tail_replay_variant b1/b2/b3 requires --enable_tail_replay'
-    )
 
 log_dir = os.path.join(
     args.log_file,
@@ -315,11 +297,12 @@ def main(args):
     experiment_message = (
         f"Target experiment: "
         f"model_name={args.model_name}, "
+        f"method=B3_RandomTopK, "
         f"tail_replay={args.enable_tail_replay}, "
         f"tail_replay_ratio={args.tail_replay_ratio}, "
         f"tail_replay_strategy={args.tail_replay_strategy}, "
-        f"tail_replay_variant={args.tail_replay_variant}, "
-        f"preserve_recent={args.tail_replay_preserve_recent}"
+        f"preserve_recent={args.tail_replay_preserve_recent}, "
+        f"replacement_topk={args.tail_replacement_topk}"
     )
     print(experiment_message)
     logger.info(experiment_message)
