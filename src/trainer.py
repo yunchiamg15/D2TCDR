@@ -295,25 +295,13 @@ def build_partial_tail_replay_data(
     random_seed,
     popular_items,
     strategy='random',
-    replay_variant='none',
     preserve_recent=2,
     replacement_topk=10,
     replacement_min_cooccurrence=2,
 ):
-    """
-    保留全部原始資料，選取部分 Tail 樣本各新增一份副本。
 
-    none：完整副本。
-    b1：刪除副本中一個較早的 item。
-    b2：刪除副本中一個較早的 Popular item。
-
-    保留最後 preserve_recent 個有效 item，next 不變。
-    """
     if not 0 <= replay_ratio <= 1:
         raise ValueError('replay_ratio must be between 0 and 1')
-
-    if replay_variant not in ('none', 'b1', 'b2', 'b3'):
-        raise ValueError('Unknown replay_variant: ' + replay_variant)
 
     if preserve_recent < 2:
         raise ValueError('preserve_recent must be at least 2')
@@ -381,55 +369,48 @@ def build_partial_tail_replay_data(
     no_replacement_candidate_count = 0
     replacement_candidates = {}
 
-    if replay_variant == 'b3' and replay_count > 0:
+    if replay_count > 0:
         replacement_candidates = build_item_cooccurrence_candidates(
             train_data=train_data,
             min_cooccurrence=replacement_min_cooccurrence,
         )
     
-    for row_id in replay_data.index:
-        # 原始 B：完整副本，不做修改。
-        if replay_variant == 'none':
-            continue
+        for row_id in replay_data.index:
+            history = [
+                int(item)
+                for item in replay_data.at[row_id, 'seq']
+                if int(item) != 0
+            ]
 
-        history = [
-            int(item)
-            for item in replay_data.at[row_id, 'seq']
-            if int(item) != 0
-        ]
+            # 保護最近 preserve_recent 個有效 items。
+            older_count = len(history) - preserve_recent
 
-        # 最後 preserve_recent 個有效 item 不可刪除。
-        older_count = len(history) - preserve_recent
+            if older_count <= 0:
+                short_history_count += 1
+                continue
 
-        if older_count <= 0:
-            short_history_count += 1
-            continue
+            # 只能替換較早的 Popular item。
+            candidates = [
+                pos
+                for pos in range(older_count)
+                if history[pos] in popular_items
+            ]
 
-        # B1：所有較早位置都可選。
-        # B2：只有較早的 Popular item 可選。
-        candidates = [
-            pos
-            for pos in range(older_count)
-            if replay_variant == 'b1'
-            or history[pos] in popular_items
-        ]
+            if not candidates:
+                no_older_popular_count += 1
+                continue
 
-        # B2 找不到較早的 Popular item，保留完整副本。
-        if not candidates:
-            no_older_popular_count += 1
-            continue
-
-        remove_pos = replay_rng.choice(candidates)
-
-        if replay_variant == 'b3':
+            # 沿用原始 B3：隨機選位置。
+            remove_pos = replay_rng.choice(candidates)
             old_item = history[remove_pos]
 
-            # 排除目前 history 已有的 item、next 和 padding。
+            # 排除歷史已有 items、next 和 padding。
             blocked = set(history)
             blocked.add(int(replay_data.at[row_id, 'next']))
             blocked.add(0)
 
-            # 先排除不允許的 item，再取前 K 個相關候選。
+            # 共現候選已依相似度由高到低排序。
+            # 先排除不合法候選，再取 Top-K。
             eligible_items = [
                 item
                 for item, similarity
@@ -437,35 +418,27 @@ def build_partial_tail_replay_data(
                 if item not in blocked
             ][:replacement_topk]
 
-            # 選中的位置沒有可靠候選，保留完整副本。
+            # 選中的位置沒有合法候選，保留完整副本。
             if not eligible_items:
                 no_replacement_candidate_count += 1
                 continue
 
+            # 沿用原始 B3：Top-K 隨機選一個。
             modified = list(history)
-            modified[remove_pos] = replay_rng.choice(
-                eligible_items
+            modified[remove_pos] = replay_rng.choice(eligible_items)
+
+            # 保持輸入長度，左側補 0。
+            padded_length = len(replay_data.at[row_id, 'seq'])
+
+            replay_data.at[row_id, 'seq'] = pad_or_truncate_sequence(
+                modified,
+                padded_length,
             )
 
-        else:
-            # B1／B2：維持原本刪除操作。
-            modified = (
-                history[:remove_pos]
-                + history[remove_pos + 1:]
-            )
+            if 'len_seq' in replay_data.columns:
+                replay_data.at[row_id, 'len_seq'] = len(modified)
 
-        # 保持原本的輸入長度，左側補 0。
-        padded_length = len(replay_data.at[row_id, 'seq'])
-
-        replay_data.at[row_id, 'seq'] = pad_or_truncate_sequence(
-            modified,
-            padded_length,
-        )
-
-        if 'len_seq' in replay_data.columns:
-            replay_data.at[row_id, 'len_seq'] = len(modified)
-
-        modified_count += 1
+            modified_count += 1
     final_data = pd.concat(
         [original_data, replay_data],
         ignore_index=True,
@@ -486,7 +459,7 @@ def build_partial_tail_replay_data(
             final_tail_count / len(final_data), 4
         ),
         'sequence_modified': modified_count > 0,
-        'tail_replay_variant': replay_variant,
+        'augmentation_method': 'b3_random_topk',
         'preserve_recent': preserve_recent,
         'modified_copies': modified_count,
         'unchanged_copies': replay_count - modified_count,
@@ -499,9 +472,7 @@ def build_partial_tail_replay_data(
                 'no_replacement_candidate_copies': (
             no_replacement_candidate_count
         ),
-        'replaced_copies': (
-            modified_count if replay_variant == 'b3' else 0
-        ),
+        'replaced_copies': modified_count,
         'replacement_candidate_items': len(
             replacement_candidates
         ),
@@ -590,7 +561,6 @@ def model_train(train_data, val_data, test_data, con_data, model_joint, args, lo
                 random_seed=args.random_seed,
                 popular_items=popular_items,
                 strategy=args.tail_replay_strategy,
-                replay_variant=args.tail_replay_variant,
                 preserve_recent=args.tail_replay_preserve_recent,
                 replacement_topk=args.tail_replacement_topk,
                 replacement_min_cooccurrence=(
