@@ -57,12 +57,15 @@ def augment_selected_b3(
     candidates,
     rng,
     preserve_recent=2,
-    replacement_topk=10
+    replacement_topk=10,
+    decisions=None,
 ):
     """
     B3：只修改 Agent 選中的副本。
 
-    - 隨機選一個較早的 Popular Item
+    - decisions=None：沿用原本隨機 B3
+    - decisions 有值：執行 Agent 選定的位置與候選，不再隨機決定
+    - 隨機模式選一個較早的 Popular Item
     - 保留最近兩個有效 Items
     - 排除 padding / history / next
     - 從合法的前 10 個相關候選等機率抽取
@@ -84,8 +87,37 @@ def augment_selected_b3(
         "no_candidate": 0
     }
 
+    if decisions is not None and len(decisions) != len(rows):
+        raise ValueError("One decision per duplicate row is required")
+
     for row_id in rows.index:
         original_seq = rows.at[row_id, "seq"]
+
+        # Agent branch: decisions use valid-history positions (zero based).
+        # None means a deliberate complete copy. No random choice occurs here.
+        if decisions is not None:
+            decision = decisions[row_id]
+            if decision is None:
+                continue
+            valid = [p for p, item in enumerate(original_seq) if int(item) != 0]
+            t, new_item = map(int, decision)
+            if not 0 <= t < len(valid) - preserve_recent:
+                raise ValueError("Agent selected a protected or invalid position")
+            padded_pos = valid[t]
+            old_item = int(original_seq[padded_pos])
+            if old_item not in popular_items:
+                raise ValueError("Agent can only replace an older Popular item")
+            blocked = {int(item) for item in original_seq}
+            blocked.update({0, int(rows.at[row_id, "next"])})
+            legal = [int(item) for item, _ in candidates.get(old_item, [])
+                     if int(item) not in blocked][:replacement_topk]
+            if new_item not in legal:
+                raise ValueError("Agent selected an illegal replacement candidate")
+            augmented_seq = list(original_seq)
+            augmented_seq[padded_pos] = new_item
+            rows.at[row_id, "seq"] = augmented_seq
+            stats["replaced"] += 1
+            continue
 
         valid_positions = [
             pos
