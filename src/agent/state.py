@@ -1,59 +1,99 @@
-"""Training-only features shared by all policies; no HPR eligibility threshold."""
-import math
+
 from collections import Counter
+import math
 import torch
 
 
-def build_target_frequency(train):
-    frequency = Counter(int(v) for v in train['next'] if int(v) != 0)
-    return frequency, max(frequency.values(), default=1)
+def build_target_frequency(train_data):
+    """
+    Count target frequency from training next items only.
+    """
+
+    counter = Counter(
+        int(item)
+        for item in train_data["next"]
+        if int(item) != 0
+    )
+
+    if not counter:
+        raise ValueError("Training targets are empty.")
+
+    max_frequency = max(counter.values())
+
+    return counter, max_frequency
 
 
-class SequenceState:
-    def __init__(self, train, popular, tail, candidates, args):
-        self.args = args
-        self.device = torch.device(args.device)
-        self.popular, self.tail = set(popular), set(tail)
-        self.candidates = candidates
-        self.similarities = {u: dict(pairs) for u, pairs in candidates.items()}
-        self.frequency, maximum = build_target_frequency(train)
-        self.denominator = math.log1p(maximum)
-        self.cache = {}
+def build_sample_states(
+    batch_df,
+    popular_items,
+    tail_items,
+    target_counter,
+    max_frequency,
+    device
+):
+    """
+    State:
+        [Historical Popular Ratio,
+         Normalized Target Frequency]
 
-    def frequency_feature(self, item):
-        return math.log1p(self.frequency.get(int(item), 0)) / self.denominator
+    Eligible:
+        target item belongs to Tail.
+    """
 
-    def similarity(self, left, right):
-        return self.similarities.get(int(left), {}).get(int(right), 0.)
+    hpr_values = []
+    frequency_values = []
+    eligible_values = []
 
-    def sample_features(self, seq, target):
-        history = [int(v) for v in seq if int(v) != 0]
-        hpr = sum(v in self.popular for v in history) / len(history) if history else 0.
-        return [hpr, self.frequency_feature(target)]
+    denominator = math.log1p(max_frequency)
 
-    def options_for(self, seq, target):
-        key = (tuple(int(v) for v in seq), int(target))
-        if key in self.cache:
-            return self.cache[key]
-        history = [v for v in key[0] if v != 0]
-        length = len(history)
-        hpr = sum(v in self.popular for v in history) / length if length else 0.
-        features = [hpr, self.frequency_feature(target)]
-        blocked = set(history) | {0, int(target)}
-        recent = history[-2:]
-        options = []
-        for t in range(max(0, length - self.args.preserve_recent)):
-            old = history[t]
-            if old not in self.popular:
-                continue
-            legal = [(int(v), float(sim)) for v, sim in self.candidates.get(old, [])
-                     if int(v) not in blocked][:self.args.replacement_topk]
-            if not legal:
-                continue
-            pos = t / (length - 1)
-            values = [[pos, sim, sum(self.similarity(v, r) for r in recent) / len(recent),
-                       self.frequency_feature(v)] for v, sim in legal]
-            options.append((t, pos, [v for v, _ in legal], values))
-        result = history, features, options
-        self.cache[key] = result
-        return result
+    for history, target in zip(
+        batch_df["seq"],
+        batch_df["next"]
+    ):
+        target = int(target)
+
+        valid_history = [
+            int(item)
+            for item in history
+            if int(item) != 0
+        ]
+
+        # State 1: HPR
+        if valid_history:
+            hpr = sum(
+                item in popular_items
+                for item in valid_history
+            ) / len(valid_history)
+        else:
+            hpr = 0.0
+
+        # State 2: Normalized Target Frequency
+        target_frequency = target_counter.get(
+            target, 0
+        )
+
+        normalized_frequency = (
+            math.log1p(target_frequency)
+            / denominator
+        )
+
+        # Tail-next Eligibility
+        eligible = target in tail_items
+
+        hpr_values.append(hpr)
+        frequency_values.append(normalized_frequency)
+        eligible_values.append(eligible)
+
+    states = torch.tensor(
+        list(zip(hpr_values, frequency_values)),
+        dtype=torch.float32,
+        device=device
+    )
+
+    eligible_mask = torch.tensor(
+        eligible_values,
+        dtype=torch.bool,
+        device=device
+    )
+
+    return states, eligible_mask
