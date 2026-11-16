@@ -1,0 +1,14 @@
+{
+  "method": "four_head",
+  "fingerprint": "525c0d11d309340eab509729002465438ae5d575e678cc336cd8e9cf065ea8ab",
+  "metrics": {
+    "Overall_HR@10": 0.48828125,
+    "Popular_HR@10": 0.6964285714285714,
+    "Tail_HR@10": 0.125,
+    "counts": {
+      "Overall": 256,
+      "Popular": 168,
+      "Tail": 64
+    }
+  }
+}

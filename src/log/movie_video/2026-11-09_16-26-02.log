@@ -1,0 +1,86 @@
+2026/11/09 16:26:02 - __main__ - INFO - 136 - main - Namespace(s_dataset='movie', t_dataset='video', p=0.3, w=1.0, log_file='log/', random_seed=1997, max_len=8, device='cuda', num_gpu=1, batch_size=512, hidden_size=128, dropout=0.1, emb_dropout=0.3, hidden_act='gelu', num_blocks=4, epochs=100, decay_step=100, gamma=0.1, metric_ks=[5, 10, 20], popular_ratio=0.2, method='four_head', high_hpr_pool_ratio=0.2, preserve_recent=2, replacement_topk=10, min_cooccurrence=2, agent_entropy_coef=0.0, agent_enabled=1, agent_lr=0.0001, agent_hidden=32, agent_budget_ratio=0.2, reward_holdout_ratio=0.1, reward_eval_samples=256, reward_ref_overall=None, reward_ref_popular=None, reward_lambda_overall=1.0, reward_lambda_popular=1.0, reward_epsilon_overall=0.002, reward_epsilon_popular=0.002, reward_baseline_window=50, skip_source_pretrain=True, init_source_model='/mnt/mira/D2TCDR/src/saved_model/movie_video/traditional_source.pth', model_name='HighHPR_FourHead', reward_reference='./saved_model/movie_video/V3_NoAgent_RES90_target_reward_reference.json', optimizer='Adam', lr=0.001, loss_lambda=1, weight_decay=0, momentum=None, schedule_sampler_name='lossaware', diffusion_steps=32, lambda_uncertainty=0.001, noise_schedule='trunc_lin', rescale_timesteps=True, eval_interval=5, patience=2, description='Diffu_norm_score', target_seed=1998, augmentation_seed=3997)
+2026/11/09 16:26:16 - __main__ - INFO - 467 - trainer - Epoch: 0
+2026/11/09 16:26:16 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:26:16.157810
+2026/11/09 16:26:27 - __main__ - INFO - 467 - trainer - Epoch: 1
+2026/11/09 16:26:27 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:26:27.105946
+2026/11/09 16:26:38 - __main__ - INFO - 467 - trainer - Epoch: 2
+2026/11/09 16:26:38 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:26:38.066519
+2026/11/09 16:26:48 - __main__ - INFO - 467 - trainer - Epoch: 3
+2026/11/09 16:26:48 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:26:48.969675
+2026/11/09 16:26:59 - __main__ - INFO - 467 - trainer - Epoch: 4
+2026/11/09 16:26:59 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:26:59.993078
+2026/11/09 16:27:11 - __main__ - INFO - 467 - trainer - Epoch: 5
+2026/11/09 16:27:11 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:27:11.016898
+2026/11/09 16:27:22 - __main__ - INFO - 467 - trainer - Epoch: 6
+2026/11/09 16:27:22 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:27:22.059246
+2026/11/09 16:27:33 - __main__ - INFO - 467 - trainer - Epoch: 7
+2026/11/09 16:27:33 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:27:33.010882
+2026/11/09 16:27:44 - __main__ - INFO - 467 - trainer - Epoch: 8
+2026/11/09 16:27:44 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:27:44.003370
+2026/11/09 16:27:54 - __main__ - INFO - 467 - trainer - Epoch: 9
+2026/11/09 16:27:54 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:27:54.911222
+2026/11/09 16:28:06 - __main__ - INFO - 467 - trainer - Epoch: 10
+2026/11/09 16:28:06 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:28:06.073941
+2026/11/09 16:28:17 - __main__ - INFO - 467 - trainer - Epoch: 11
+2026/11/09 16:28:17 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:28:17.113245
+2026/11/09 16:28:28 - __main__ - INFO - 467 - trainer - Epoch: 12
+2026/11/09 16:28:28 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:28:28.151272
+2026/11/09 16:28:39 - __main__ - INFO - 467 - trainer - Epoch: 13
+2026/11/09 16:28:39 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:28:39.174012
+2026/11/09 16:28:50 - __main__ - INFO - 467 - trainer - Epoch: 14
+2026/11/09 16:28:50 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:28:50.204672
+2026/11/09 16:29:01 - __main__ - INFO - 467 - trainer - Epoch: 15
+2026/11/09 16:29:01 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:29:01.403471
+2026/11/09 16:29:12 - __main__ - INFO - 467 - trainer - Epoch: 16
+2026/11/09 16:29:12 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:29:12.555414
+2026/11/09 16:29:23 - __main__ - INFO - 467 - trainer - Epoch: 17
+2026/11/09 16:29:23 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:29:23.640509
+2026/11/09 16:29:34 - __main__ - INFO - 467 - trainer - Epoch: 18
+2026/11/09 16:29:34 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:29:34.679194
+2026/11/09 16:29:45 - __main__ - INFO - 467 - trainer - Epoch: 19
+2026/11/09 16:29:45 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:29:45.782934
+2026/11/09 16:29:56 - __main__ - INFO - 467 - trainer - Epoch: 20
+2026/11/09 16:29:56 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:29:56.939231
+2026/11/09 16:30:08 - __main__ - INFO - 467 - trainer - Epoch: 21
+2026/11/09 16:30:08 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:30:08.106203
+2026/11/09 16:30:19 - __main__ - INFO - 467 - trainer - Epoch: 22
+2026/11/09 16:30:19 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:30:19.232559
+2026/11/09 16:30:30 - __main__ - INFO - 467 - trainer - Epoch: 23
+2026/11/09 16:30:30 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:30:30.431461
+2026/11/09 16:30:41 - __main__ - INFO - 467 - trainer - Epoch: 24
+2026/11/09 16:30:41 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:30:41.534316
+2026/11/09 16:30:52 - __main__ - INFO - 467 - trainer - Epoch: 25
+2026/11/09 16:30:52 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:30:52.615902
+2026/11/09 16:31:03 - __main__ - INFO - 467 - trainer - Epoch: 26
+2026/11/09 16:31:03 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:31:03.655974
+2026/11/09 16:31:14 - __main__ - INFO - 467 - trainer - Epoch: 27
+2026/11/09 16:31:14 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:31:14.623705
+2026/11/09 16:31:25 - __main__ - INFO - 467 - trainer - Epoch: 28
+2026/11/09 16:31:25 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:31:25.710337
+2026/11/09 16:31:36 - __main__ - INFO - 467 - trainer - Epoch: 29
+2026/11/09 16:31:36 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:31:36.748779
+2026/11/09 16:31:47 - __main__ - INFO - 467 - trainer - Epoch: 30
+2026/11/09 16:31:47 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:31:47.670524
+2026/11/09 16:31:58 - __main__ - INFO - 467 - trainer - Epoch: 31
+2026/11/09 16:31:58 - __main__ - INFO - 475 - trainer - start predicting: 2026-11-09 16:31:58.741177
+2026/11/09 16:32:00 - __main__ - INFO - 565 - trainer - {'Best_HR@5': np.float64(38.5742), 'Best_NDCG@5': np.float64(28.4954), 'Best_HR@10': np.float64(49.3652), 'Best_NDCG@10': np.float64(31.9862), 'Best_HR@20': np.float64(61.0352), 'Best_NDCG@20': np.float64(34.8411)}
+2026/11/09 16:32:00 - __main__ - INFO - 566 - trainer - {'Best_epoch_HR@5': 26, 'Best_epoch_NDCG@5': 26, 'Best_epoch_HR@10': 26, 'Best_epoch_NDCG@10': 26, 'Best_epoch_HR@20': 19, 'Best_epoch_NDCG@20': 26}
+2026/11/09 16:32:00 - __main__ - INFO - 631 - trainer - REWARD_SET_RESULTS: {'Overall_HR@10': 0.48828125, 'Popular_HR@10': 0.6964285714285714, 'Tail_HR@10': 0.125, 'counts': {'Overall': 256, 'Popular': 168, 'Tail': 64}}
+2026/11/09 16:32:00 - __main__ - INFO - 745 - trainer - Target Popularity Definition---------------------------------------------
+2026/11/09 16:32:00 - __main__ - INFO - 750 - trainer - {'domain': 'Target', 'popular_ratio': 0.2, 'observed_train_items': 20880, 'popular_items': 4176, 'unpopular_seen_items': 16704, 'unseen_items_in_test': 'calculated from test ground truth'}
+2026/11/09 16:32:02 - __main__ - INFO - 1026 - trainer - %s Test Overall------------------------------------------------------
+2026/11/09 16:32:02 - __main__ - INFO - 1030 - trainer - {'HR@5': 38.3755, 'NDCG@5': 28.5128, 'HR@10': 49.7568, 'NDCG@10': 32.1839, 'HR@20': 62.0623, 'NDCG@20': 35.2823}
+2026/11/09 16:32:02 - __main__ - INFO - 1121 - trainer - Target Test Group Size----------------------------------------------
+2026/11/09 16:32:02 - __main__ - INFO - 1126 - trainer - {'domain': 'Target', 'Overall_test_samples': 2056, 'Popular_test_samples': 1358, 'Unpopular_seen_test_samples': 511, 'Unseen_test_samples': 187, 'Grouped_test_samples': 2056}
+2026/11/09 16:32:02 - __main__ - INFO - 1128 - trainer - Target Test Popular Ground Truth-------------------------------------
+2026/11/09 16:32:02 - __main__ - INFO - 1133 - trainer - {'HR@5': 56.3328, 'NDCG@5': 42.305, 'HR@10': 70.7658, 'NDCG@10': 46.9752, 'HR@20': 83.5052, 'NDCG@20': 50.1999}
+2026/11/09 16:32:02 - __main__ - INFO - 1135 - trainer - Target Test Unpopular-Seen Ground Truth------------------------------
+2026/11/09 16:32:02 - __main__ - INFO - 1140 - trainer - {'HR@5': 4.6967, 'NDCG@5': 2.2937, 'HR@10': 12.1331, 'NDCG@10': 4.6533, 'HR@20': 27.7886, 'NDCG@20': 8.5497}
+2026/11/09 16:32:02 - __main__ - INFO - 1144 - trainer - Target Test Unseen Ground Truth--------------------------------------
+2026/11/09 16:32:02 - __main__ - INFO - 1149 - trainer - {'HR@5': 0.0, 'NDCG@5': 0.0, 'HR@10': 0.0, 'NDCG@10': 0.0, 'HR@20': 0.0, 'NDCG@20': 0.0}
+2026/11/09 16:32:02 - __main__ - INFO - 1151 - trainer - Target Recommendation Popularity-------------------------------------
+2026/11/09 16:32:02 - __main__ - INFO - 1156 - trainer - {'PopularRatio@5': 84.0175, 'PopularRatio@10': 71.3765, 'PopularRatio@20': 55.1459}
+2026/11/09 16:32:02 - __main__ - INFO - 1159 - trainer - Best Eval---------------------------------------------------------
+2026/11/09 16:32:02 - __main__ - INFO - 1162 - trainer - {'Best_HR@5': np.float64(38.5742), 'Best_NDCG@5': np.float64(28.4954), 'Best_HR@10': np.float64(49.3652), 'Best_NDCG@10': np.float64(31.9862), 'Best_HR@20': np.float64(61.0352), 'Best_NDCG@20': np.float64(34.8411)}
+2026/11/09 16:32:02 - __main__ - INFO - 1163 - trainer - {'Best_epoch_HR@5': 26, 'Best_epoch_NDCG@5': 26, 'Best_epoch_HR@10': 26, 'Best_epoch_NDCG@10': 26, 'Best_epoch_HR@20': 19, 'Best_epoch_NDCG@20': 26}
+2026/11/09 16:32:02 - __main__ - INFO - 369 - main - Target model saved at: ./saved_model/movie_video/HighHPR_FourHead_target.pth

@@ -1,0 +1,170 @@
+{
+  "metadata": {
+    "method": "copy_replace",
+    "model_name": "Shared_CopyReplace",
+    "protocol_fingerprint": "e19d68d4a16874fb11c431b77766b95b0651fa7a529ec83835374af8b4843b08",
+    "source_sha256": "b52a542b41f6b3fb4c4e8a73c1bcf787bc8954611483d2f3d9dbf00ec9341cd1",
+    "selected_epoch": 19,
+    "selection_rule": "Overall Validation NDCG@10",
+    "validation_ndcg10": 0.3088456728411468,
+    "counts": {
+      "main": 14794,
+      "res": 1644,
+      "validation": 2054,
+      "test": 2056
+    },
+    "total_actions": {
+      "tail_samples": 108239,
+      "copies": 41316,
+      "replaced": 41316,
+      "full_copies": 0
+    },
+    "common_config": {
+      "random_seed": 1997,
+      "target_seed": 1998,
+      "eval_seed": 2026,
+      "augmentation_seed": 3997,
+      "reward_holdout_ratio": 0.1,
+      "popular_ratio": 0.2,
+      "source_item_num": 98507,
+      "target_item_num": 23978,
+      "max_len": 8,
+      "batch_size": 512,
+      "hidden_size": 128,
+      "hidden_act": "gelu",
+      "num_blocks": 4,
+      "dropout": 0.1,
+      "emb_dropout": 0.3,
+      "p": 0.3,
+      "w": 1.0,
+      "diffusion_steps": 32,
+      "schedule_sampler_name": "lossaware",
+      "noise_schedule": "trunc_lin",
+      "rescale_timesteps": true,
+      "lambda_uncertainty": 0.001,
+      "optimizer": "Adam",
+      "lr": 0.001,
+      "weight_decay": 0.0,
+      "loss_lambda": 1.0,
+      "decay_step": 100,
+      "gamma": 0.1,
+      "epochs": 100,
+      "eval_interval": 1,
+      "patience": 5,
+      "metric_ks": [
+        5,
+        10,
+        20
+      ],
+      "preserve_recent": 2,
+      "replacement_topk": 10,
+      "min_cooccurrence": 2
+    },
+    "method_code_sha256": "1e8d06c7183452780756d5b91a6b8c1c14f99b5fbe974d6c662e67e97b7d3d67",
+    "method_config": {
+      "agent_budget_ratio": 0.2,
+      "agent_lr": 0.0001,
+      "agent_hidden": 32,
+      "agent_entropy_coef": 0.0,
+      "reward_baseline_window": 50,
+      "reward_lambda_overall": 1.0,
+      "reward_lambda_popular": 1.0,
+      "reward_epsilon_overall": 0.002,
+      "reward_epsilon_popular": 0.002
+    }
+  },
+  "res": {
+    "metrics": {
+      "Overall": {
+        "HR@5": 0.3704379562043796,
+        "HR@10": 0.4659367396593674,
+        "HR@20": 0.5936739659367397,
+        "NDCG@5": 0.2741562822768172,
+        "NDCG@10": 0.3048297864904736,
+        "NDCG@20": 0.33705728947292707
+      },
+      "Popular": {
+        "HR@5": 0.550656660412758,
+        "HR@10": 0.6622889305816135,
+        "HR@20": 0.8020637898686679,
+        "NDCG@5": 0.4121924765944837,
+        "NDCG@10": 0.4481276464184169,
+        "NDCG@20": 0.48332041272364373
+      },
+      "Tail": {
+        "HR@5": 0.05116279069767442,
+        "HR@10": 0.13953488372093023,
+        "HR@20": 0.27674418604651163,
+        "NDCG@5": 0.02631569305434414,
+        "NDCG@10": 0.05450255327513067,
+        "NDCG@20": 0.08937542616362806
+      },
+      "Unseen": {
+        "HR@5": 0.0,
+        "HR@10": 0.0,
+        "HR@20": 0.013513513513513514,
+        "NDCG@5": 0.0,
+        "NDCG@10": 0.0,
+        "NDCG@20": 0.003183720808972234
+      }
+    },
+    "counts": {
+      "Overall": 1644,
+      "Popular": 1066,
+      "Tail": 430,
+      "Unseen": 148
+    },
+    "recommendation_popularity": {
+      "PopularRatio@5": 0.7731143552311436,
+      "PopularRatio@10": 0.6437956204379562,
+      "PopularRatio@20": 0.5219586374695864
+    }
+  },
+  "test": {
+    "metrics": {
+      "Overall": {
+        "HR@5": 0.3745136186770428,
+        "HR@10": 0.48443579766536965,
+        "HR@20": 0.6089494163424124,
+        "NDCG@5": 0.28079959118854547,
+        "NDCG@10": 0.3162749212214519,
+        "NDCG@20": 0.34766460366620816
+      },
+      "Popular": {
+        "HR@5": 0.5478645066273933,
+        "HR@10": 0.6782032400589102,
+        "HR@20": 0.8181148748159057,
+        "NDCG@5": 0.41615243906245103,
+        "NDCG@10": 0.4583594640824244,
+        "NDCG@20": 0.49368491986748775
+      },
+      "Tail": {
+        "HR@5": 0.050880626223091974,
+        "HR@10": 0.14677103718199608,
+        "HR@20": 0.2759295499021526,
+        "NDCG@5": 0.023853125708103592,
+        "NDCG@10": 0.05442091156041642,
+        "NDCG@20": 0.08683816821462925
+      },
+      "Unseen": {
+        "HR@5": 0.0,
+        "HR@10": 0.0,
+        "HR@20": 0.0,
+        "NDCG@5": 0.0,
+        "NDCG@10": 0.0,
+        "NDCG@20": 0.0
+      }
+    },
+    "counts": {
+      "Overall": 2056,
+      "Popular": 1358,
+      "Tail": 511,
+      "Unseen": 187
+    },
+    "recommendation_popularity": {
+      "PopularRatio@5": 0.7772373540856031,
+      "PopularRatio@10": 0.6478112840466926,
+      "PopularRatio@20": 0.5262889105058366
+    }
+  }
+}

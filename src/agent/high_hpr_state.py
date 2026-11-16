@@ -3,6 +3,8 @@ import math
 from collections import Counter
 import torch
 
+from .high_hpr_b3 import legal_b3_candidates
+
 
 def build_target_frequency(train):
     frequency = Counter(int(v) for v in train['next'] if int(v) != 0)
@@ -31,29 +33,30 @@ class SequenceState:
         hpr = sum(v in self.popular for v in history) / len(history) if history else 0.
         return [hpr, self.frequency_feature(target)]
 
+    def older_popular_positions(self, history):
+        length = len(history)
+        return [(t, t / (length - 1))
+                for t in range(length - self.args.preserve_recent)
+                if history[t] in self.popular]
+
     def options_for(self, seq, target):
         key = (tuple(int(v) for v in seq), int(target))
         if key in self.cache:
             return self.cache[key]
         history = [v for v in key[0] if v != 0]
-        length = len(history)
-        hpr = sum(v in self.popular for v in history) / length if length else 0.
-        features = [hpr, self.frequency_feature(target)]
+        features = self.sample_features(history, target)
         blocked = set(history) | {0, int(target)}
         recent = history[-2:]
         options = []
-        for t in range(max(0, length - self.args.preserve_recent)):
+        for t, pos in self.older_popular_positions(history):
             old = history[t]
-            if old not in self.popular:
+            items = legal_b3_candidates(self.candidates, old, blocked, self.args.replacement_topk)
+            if not items:
                 continue
-            legal = [(int(v), float(sim)) for v, sim in self.candidates.get(old, [])
-                     if int(v) not in blocked][:self.args.replacement_topk]
-            if not legal:
-                continue
-            pos = t / (length - 1)
-            values = [[pos, sim, sum(self.similarity(v, r) for r in recent) / len(recent),
-                       self.frequency_feature(v)] for v, sim in legal]
-            options.append((t, pos, [v for v, _ in legal], values))
+            values = [[pos, self.similarity(old, v),
+                       sum(self.similarity(v, r) for r in recent) / len(recent),
+                       self.frequency_feature(v)] for v in items]
+            options.append((t, pos, items, values))
         result = history, features, options
         self.cache[key] = result
         return result

@@ -51,6 +51,11 @@ def build_b3_candidates(train_data, min_cooccurrence=2):
     return candidates
 
 
+def legal_b3_candidates(candidates, old_item, blocked, topk):
+    return [int(item) for item, _ in candidates.get(old_item, [])
+            if int(item) not in blocked][:topk]
+
+
 def augment_selected_b3(
     duplicate_rows,
     popular_items,
@@ -59,12 +64,14 @@ def augment_selected_b3(
     preserve_recent=2,
     replacement_topk=10,
     decisions=None,
+    candidate_catalog=None,
 ):
     """
     B3：只修改 Agent 選中的副本。
 
     - decisions=None：沿用原本隨機 B3
     - decisions 有值：執行 Agent 選定的位置與候選，不再隨機決定
+    - candidate_catalog 有值：對指定決策驗證主訓練集候選與排除條件
     - 隨機模式選一個較早的 Popular Item
     - 保留最近兩個有效 Items
     - 排除 padding / history / next
@@ -109,9 +116,11 @@ def augment_selected_b3(
                 raise ValueError("Agent can only replace an older Popular item")
             blocked = {int(item) for item in original_seq}
             blocked.update({0, int(rows.at[row_id, "next"])})
-            legal = [int(item) for item, _ in candidates.get(old_item, [])
-                     if int(item) not in blocked][:replacement_topk]
-            if new_item not in legal:
+            if candidate_catalog is None:
+                legal = legal_b3_candidates(candidates, old_item, blocked, replacement_topk)
+            else:
+                legal = candidate_catalog
+            if new_item in blocked or new_item not in legal:
                 raise ValueError("Agent selected an illegal replacement candidate")
             augmented_seq = list(original_seq)
             augmented_seq[padded_pos] = new_item
@@ -157,11 +166,7 @@ def augment_selected_b3(
         blocked.add(int(rows.at[row_id, "next"]))
 
         # 先過濾，再取相似度最高的前 10 個
-        top_candidates = [
-            item
-            for item, _ in candidates.get(old_item, [])
-            if item not in blocked
-        ][:replacement_topk]
+        top_candidates = legal_b3_candidates(candidates, old_item, blocked, replacement_topk)
 
         if not top_candidates:
             stats["no_candidate"] += 1

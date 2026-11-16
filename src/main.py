@@ -11,6 +11,7 @@ import logging
 import time
 from model import create_model_diffu, Att_Diffuse_model
 from trainer import model_train
+from agent.high_hpr_policy import LEARNED
 import pandas as pd
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -40,7 +41,11 @@ parser.add_argument('--popular_ratio', type=float, default=0.2, help='Top ratio 
 # ==============================
 # RL Agent Settings
 # ==============================
-parser.add_argument('--method', choices=['baseline','model_b','b3_full','random_b3','v3_selection','copy_replace','four_head'], default='baseline')
+parser.add_argument('--method', choices=[
+    'baseline', 'model_b', 'b3_full', 'random_b3',
+    'v3_selection', 'copy_replace', 'four_head', 'four_head_embedding',
+    'four_head_embedding_top10',
+], default=None, help='Training method (default: four_head_embedding)')
 parser.add_argument('--high_hpr_pool_ratio', type=float, default=0.20)
 parser.add_argument('--preserve_recent', type=int, default=2)
 parser.add_argument('--replacement_topk', type=int, default=10)
@@ -81,10 +86,30 @@ parser.add_argument('--eval_interval', type=int, default=5, help='the number of 
 parser.add_argument('--patience', type=int, default=2, help='the number of epoch to wait before early stop')
 parser.add_argument('--description', type=str, default='Diffu_norm_score', help='Model brief introduction')
 args = parser.parse_args()
+if args.method is None:
+    args.method = 'four_head_embedding'
+    args.skip_source_pretrain = True
+    if args.init_source_model is None:
+        args.init_source_model = '/mnt/mira/D2TCDR/src/saved_model/movie_video/traditional_source.pth'
+    if args.reward_reference is None and args.reward_ref_overall is None and args.reward_ref_popular is None:
+        args.reward_reference = str(Path('saved_model') / f'{args.s_dataset}_{args.t_dataset}'
+                                    / 'V3_NoAgent_RES90_target_reward_reference.json')
+    if args.model_name is None:
+        args.model_name = 'HighHPR_FourHeadEmbedding_Logged'
 # --method is authoritative; all learned methods have no Loss Weight Head.
-args.agent_enabled = int(args.method in ('v3_selection','copy_replace','four_head'))
+args.agent_enabled = int(args.method in LEARNED)
 if args.model_name is None:
-    args.model_name = dict(baseline='V3_NoAgent_RES90',model_b='HighHPR_ModelB_Full',b3_full='HighHPR_B3_Full',random_b3='HighHPR_RandomB3_Budget20',v3_selection='HighHPR_V3Selection',copy_replace='HighHPR_CopyReplace',four_head='HighHPR_FourHead')[args.method]
+    args.model_name = {
+        'baseline': 'V3_NoAgent_RES90',
+        'model_b': 'HighHPR_ModelB_Full',
+        'b3_full': 'HighHPR_B3_Full',
+        'random_b3': 'HighHPR_RandomB3_Budget20',
+        'v3_selection': 'HighHPR_V3Selection',
+        'copy_replace': 'HighHPR_CopyReplace',
+        'four_head': 'HighHPR_FourHead',
+        'four_head_embedding': 'HighHPR_FourHeadEmbedding',
+        'four_head_embedding_top10': 'HighHPR_FourHeadEmbeddingTop10',
+    }[args.method]
 args.target_seed = args.random_seed + 1
 args.augmentation_seed = args.random_seed + 2000
 if not 0 < args.high_hpr_pool_ratio <= 1:

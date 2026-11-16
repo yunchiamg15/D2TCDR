@@ -9,11 +9,12 @@ from torch import nn
 from torch.distributions import Categorical
 
 from rng_utils import isolated_rng
-from .high_hpr_b3 import augment_selected_b3
+from .high_hpr_b3 import augment_selected_b3, legal_b3_candidates
 from .reward import RewardBaseline
 from .high_hpr_state import SequenceState
 
-LEARNED = {'v3_selection', 'copy_replace', 'four_head'}
+EMBEDDING_METHODS = {'four_head_embedding', 'four_head_embedding_top10'}
+LEARNED = {'v3_selection', 'copy_replace', 'four_head'} | EMBEDDING_METHODS
 
 
 def build_high_hpr_pool(train, popular, tail, ratio, seed):
@@ -39,13 +40,13 @@ def build_high_hpr_pool(train, popular, tail, ratio, seed):
 def empty_stats():
     return dict(tail_samples=0, eligible_samples=0, decisions=0, copies=0, replaced=0, full_copies=0,
         skipped=0, no_legal=0, too_short=0, no_older_popular=0, no_candidate=0,
-        selected_ids=[], positions={}, candidate_groups={'Popular': 0, 'Tail': 0},
+        selected_ids=[], positions={}, candidate_groups={'Popular': 0, 'Tail': 0}, replacements=[],
         candidate_count_sum=0, candidate_pool_popular_count=0,
         copy_probability_mean=None, copy_rate=None)
 
 
 class DebiasAgent(nn.Module):
-    def __init__(self, method, hidden=32):
+    def __init__(self, method, hidden=32, embedding_dim=None):
         super().__init__()
         self.encoder = nn.Sequential(nn.Linear(2, hidden), nn.ReLU(),
                                      nn.Linear(hidden, hidden), nn.ReLU())
@@ -53,19 +54,36 @@ class DebiasAgent(nn.Module):
             self.selection_head = nn.Linear(hidden, 1)
         elif method == 'copy_replace':
             self.copy_head = nn.Linear(hidden, 2)
-        elif method == 'four_head':
+        elif method == 'four_head' or method in EMBEDDING_METHODS:
             self.copy_head = nn.Linear(hidden, 2)
             self.replace_head = nn.Linear(hidden, 2)
             self.position_head = nn.Sequential(nn.Linear(hidden + 1, hidden), nn.ReLU(), nn.Linear(hidden, 1))
-            self.candidate_head = nn.Sequential(nn.Linear(hidden + 4, hidden), nn.ReLU(), nn.Linear(hidden, 1))
+            if method in EMBEDDING_METHODS:
+                # Predict a query from the history, selected position and original item.
+                self.candidate_head = nn.Sequential(
+                    nn.Linear(hidden + 1 + 3 * embedding_dim, hidden),
+                    nn.ReLU(),
+                    nn.Linear(hidden, embedding_dim),
+                )
+            else:
+                self.candidate_head = nn.Sequential(nn.Linear(hidden + 4, hidden), nn.ReLU(), nn.Linear(hidden, 1))
         else:
             raise ValueError('No learned policy for this method')
 
 
 class AugmentationController(SequenceState):
-    def __init__(self, train, popular, tail, candidates, args):
+    def __init__(self, train, popular, tail, candidates, args, embedding_dim=None):
         super().__init__(train, popular, tail, candidates, args)
         self.method = args.method
+        self.uses_embeddings = self.method in EMBEDDING_METHODS
+        if self.uses_embeddings and (embedding_dim is None or embedding_dim <= 0):
+            raise ValueError(f'{self.method} requires target item embeddings')
+        self.catalog = None
+        if self.method == 'four_head_embedding':
+            self.catalog = (self.popular | self.tail) - {0}
+            self.catalog_items = sorted(self.catalog)
+            self.catalog_ids = torch.tensor(self.catalog_items, dtype=torch.long, device=self.device)
+            self.catalog_columns = {item: i for i, item in enumerate(self.catalog_items)}
         self.eligible_ids, self.pool_metadata = build_high_hpr_pool(
             train, self.popular, self.tail, args.high_hpr_pool_ratio, args.random_seed)
         self.policy_seed = args.target_seed + 8000
@@ -73,7 +91,7 @@ class AugmentationController(SequenceState):
         self.policy = None
         if self.method in LEARNED:
             with isolated_rng(args.target_seed + 8000):
-                self.policy = DebiasAgent(self.method, args.agent_hidden).to(self.device)
+                self.policy = DebiasAgent(self.method, args.agent_hidden, embedding_dim).to(self.device)
             self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=args.agent_lr)
             self.baseline = RewardBaseline(args.reward_baseline_window)
         self.generator = torch.Generator(device=self.device)
@@ -136,8 +154,29 @@ class AugmentationController(SequenceState):
         duplicate['is_augmented'] = 1
         changed, _ = augment_selected_b3(pd.DataFrame([duplicate]), self.popular,
             self.candidates, None, preserve_recent=self.args.preserve_recent,
-            replacement_topk=self.args.replacement_topk, decisions=[(t, chosen)])
+            replacement_topk=self.args.replacement_topk, decisions=[(t, chosen)],
+            candidate_catalog=self.catalog)
         return changed.iloc[0].copy()
+
+    def embedding_candidate_logits(self, encoded, history, t, pos, item_embeddings,
+                                   candidate_embeddings):
+        history_ids = torch.tensor(history, dtype=torch.long, device=self.device)
+        vectors = item_embeddings.index_select(0, history_ids)
+        original = vectors[t]
+        context = (vectors.sum(dim=0) - original) / (len(history) - 1)
+        recent = vectors[-2:].mean(dim=0)
+        query = self.policy.candidate_head(torch.cat([
+            encoded, encoded.new_tensor([pos]), context, original, recent,
+        ]))
+        return (candidate_embeddings @ query) / math.sqrt(query.numel())
+
+    def catalog_candidate(self, logits, blocked):
+        blocked_columns = torch.tensor(
+            [self.catalog_columns[item] for item in blocked if item in self.catalog_columns],
+            dtype=torch.long, device=self.device,
+        )
+        logits = logits.index_fill(0, blocked_columns, float('-inf'))
+        return self.catalog_items[self.draw(logits)]
 
     def count_copy(self, row, duplicate, stats):
         stats['copies'] += 1
@@ -153,14 +192,27 @@ class AugmentationController(SequenceState):
         t = changed[0]
         stats['replaced'] += 1
         stats['positions'][str(t + 1)] = stats['positions'].get(str(t + 1), 0) + 1
-        group = 'Popular' if after[t] in self.popular else 'Tail'
-        stats['candidate_groups'][group] += 1
+        old, chosen = before[t], after[t]
+        chosen_group = 'Popular' if chosen in self.popular else 'Tail'
+        stats['candidate_groups'][chosen_group] += 1
         blocked = set(before) | {0, int(row['next'])}
-        items = [v for v, _ in self.candidates.get(before[t], []) if v not in blocked][:self.args.replacement_topk]
-        stats['candidate_count_sum'] += len(items)
-        stats['candidate_pool_popular_count'] += sum(v in self.popular for v in items)
+        b3_items = legal_b3_candidates(self.candidates, old, blocked, self.args.replacement_topk)
+        b3_rank = b3_items.index(chosen) + 1 if chosen in b3_items else None
+        if self.catalog is not None:
+            candidate_count = len(self.catalog) - len(self.catalog & blocked)
+            stats['candidate_pool_popular_count'] += len(self.popular) - len(self.popular & blocked)
+        else:
+            candidate_count = len(b3_items)
+            stats['candidate_pool_popular_count'] += sum(v in self.popular for v in b3_items)
+        stats['candidate_count_sum'] += candidate_count
+        stats['replacements'].append(dict(
+            row_id=int(row['_row_id']), position=t + 1, old_item=old,
+            replacement_item=chosen, replacement_group=chosen_group,
+            candidate_count=candidate_count, b3_candidate_count=len(b3_items),
+            in_b3_topk=b3_rank is not None, b3_rank=b3_rank,
+        ))
 
-    def augment(self, batch, epoch):
+    def augment(self, batch, epoch, *, item_embeddings=None):
         if batch['is_augmented'].astype(int).ne(0).any():
             raise ValueError('Start every decision from original samples')
         self._log_probs, self._entropies, self._normalized_entropies = [], [], []
@@ -191,11 +243,25 @@ class AugmentationController(SequenceState):
                 duplicate = self.random_b3_copy(row, epoch, stats)
                 self.count_copy(row, duplicate, stats)
                 copies.append(duplicate)
-        elif self.method in ('copy_replace', 'four_head'):
+        elif self.method in LEARNED:
+            catalog_embeddings = None
+            if self.uses_embeddings:
+                if item_embeddings is None:
+                    raise ValueError(f'{self.method} requires the current target embedding table')
+                item_embeddings = item_embeddings.detach()
             for i in tail_positions:
                 row = batch.iloc[i]
-                history, features, options = self.options_for(row['seq'], int(row['next']))
-                if not options:
+                target = int(row['next'])
+                if self.catalog is None:
+                    history, features, options = self.options_for(row['seq'], target)
+                    positions = [(t, pos) for t, pos, _, _ in options]
+                else:
+                    history = [int(item) for item in row['seq'] if int(item) != 0]
+                    features = self.sample_features(history, target)
+                    blocked = set(history) | {0, target}
+                    positions = (self.older_popular_positions(history)
+                                 if len(self.catalog & blocked) < len(self.catalog) else [])
+                if not positions:
                     stats['no_legal'] += 1
                     if self.method == 'copy_replace':
                         continue  # action 1 is impossible; no unchanged copies in this method
@@ -209,7 +275,7 @@ class AugmentationController(SequenceState):
                     rng = self.edit_rng(epoch, int(row['_row_id']))
                     t, _, items, _ = rng.choice(options)
                     duplicate = self.chosen_copy(row, t, rng.choice(items))
-                elif not options:
+                elif not positions:
                     duplicate = row.copy()
                     duplicate['seq'] = list(row['seq'])
                     duplicate['is_augmented'] = 1
@@ -218,13 +284,34 @@ class AugmentationController(SequenceState):
                     duplicate['seq'] = list(row['seq'])
                     duplicate['is_augmented'] = 1
                 else:
-                    pos_values = torch.tensor([[opt[1]] for opt in options], dtype=torch.float32, device=self.device)
-                    pos_logits = self.policy.position_head(torch.cat([encoded.expand(len(options), -1), pos_values], -1)).squeeze(-1)
-                    option = options[self.draw(pos_logits)]
-                    t, _, items, values = option
-                    candidate_values = torch.tensor(values, dtype=torch.float32, device=self.device)
-                    candidate_logits = self.policy.candidate_head(torch.cat([encoded.expand(len(items), -1), candidate_values], -1)).squeeze(-1)
-                    duplicate = self.chosen_copy(row, t, items[self.draw(candidate_logits)])
+                    pos_values = encoded.new_tensor([[pos] for _, pos in positions])
+                    pos_input = torch.cat([encoded.expand(len(positions), -1), pos_values], -1)
+                    pos_logits = self.policy.position_head(pos_input).squeeze(-1)
+                    position_index = self.draw(pos_logits)
+                    t, pos = positions[position_index]
+                    if self.catalog is not None:
+                        if catalog_embeddings is None:
+                            # index_select copies the embeddings once per batch. The
+                            # recommendation optimizer can step before policy backward.
+                            catalog_embeddings = item_embeddings.index_select(0, self.catalog_ids)
+                        candidate_logits = self.embedding_candidate_logits(
+                            encoded, history, t, pos, item_embeddings, catalog_embeddings,
+                        )
+                        chosen = self.catalog_candidate(candidate_logits, blocked)
+                    else:
+                        _, _, items, values = options[position_index]
+                        if self.uses_embeddings:
+                            item_ids = torch.tensor(items, dtype=torch.long, device=self.device)
+                            candidate_logits = self.embedding_candidate_logits(
+                                encoded, history, t, pos, item_embeddings,
+                                item_embeddings.index_select(0, item_ids),
+                            )
+                        else:
+                            candidate_values = encoded.new_tensor(values)
+                            candidate_input = torch.cat([encoded.expand(len(items), -1), candidate_values], -1)
+                            candidate_logits = self.policy.candidate_head(candidate_input).squeeze(-1)
+                        chosen = items[self.draw(candidate_logits)]
+                    duplicate = self.chosen_copy(row, t, chosen)
                 self.count_copy(row, duplicate, stats)
                 copies.append(duplicate)
         else:

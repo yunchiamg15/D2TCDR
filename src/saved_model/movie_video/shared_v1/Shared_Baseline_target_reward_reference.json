@@ -1,0 +1,17 @@
+{
+  "method": "baseline",
+  "protocol_fingerprint": "e19d68d4a16874fb11c431b77766b95b0651fa7a529ec83835374af8b4843b08",
+  "metrics": {
+    "Overall_HR@10": 0.47566909975669097,
+    "Popular_HR@10": 0.6941838649155723,
+    "Tail_HR@10": 0.09534883720930233,
+    "counts": {
+      "Overall": 1644,
+      "Popular": 1066,
+      "Tail": 430,
+      "Unseen": 148
+    }
+  },
+  "target_checkpoint": "saved_model/movie_video/shared_v1/Shared_Baseline_target.pth",
+  "selected_epoch": 20
+}

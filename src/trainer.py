@@ -32,7 +32,7 @@ from agent.b3 import (
     augment_selected_b3
 )
 
-from agent.high_hpr_policy import AugmentationController
+from agent.high_hpr_policy import AugmentationController, EMBEDDING_METHODS
 from agent.high_hpr_b3 import build_b3_candidates as build_controller_candidates
 
 def optimizers(model, args):
@@ -304,23 +304,38 @@ def model_train(train_data, val_data, test_data, con_data, model_joint, args, lo
             reward_subset = reward_data.copy()
 
     controller = None
+    target_embedding = None
     if not pretrain_flag and args.method != 'baseline':
         # IDs are assigned before shuffle and never recalculated inside a batch.
         train_data = train_data.copy().reset_index(drop=True)
         train_data['_row_id'] = np.arange(len(train_data))
         train_data['is_augmented'] = 0
+        if args.method in EMBEDDING_METHODS:
+            target_embedding = model_joint.target_embeddings
+        # For the full-catalog version, the graph is used only to annotate logs.
         candidates = build_controller_candidates(train_data, args.min_cooccurrence)
-        controller = AugmentationController(train_data, popular_items, tail_items, candidates, args)
+        controller = AugmentationController(
+            train_data, popular_items, tail_items, candidates, args,
+            embedding_dim=target_embedding.embedding_dim if target_embedding is not None else None,
+        )
         agent = controller.policy
         if use_agent:
             best_agent_state = copy.deepcopy(agent.state_dict())
         agent_log_path = str(Path(args.target_model_path).with_name(
             Path(args.target_model_path).stem + '_augmentation.jsonl'))
         with open(agent_log_path, 'w', encoding='utf-8') as handle:
-            handle.write(json.dumps(dict(event='start', method=args.method,
+            metadata = dict(event='start', method=args.method,
                 eligibility='high_hpr_tail_next', pool=controller.pool_metadata,
                 selection_ratio_within_pool=args.agent_budget_ratio,
-                fingerprint=getattr(args, 'reward_fingerprint', None))) + '\n')
+                fingerprint=getattr(args, 'reward_fingerprint', None),
+                b3_reference_topk=args.replacement_topk,
+                b3_reference_min_cooccurrence=args.min_cooccurrence)
+            if target_embedding is not None:
+                metadata.update(candidate_scoring='embedding',
+                                candidate_scope='full_catalog' if controller.catalog is not None else 'b3_topk')
+                if controller.catalog is not None:
+                    metadata['candidate_catalog_size'] = len(controller.catalog)
+            handle.write(json.dumps(metadata) + '\n')
         print('HIGH_HPR_POOL:', {k:v for k,v in controller.pool_metadata.items() if k != 'eligible_ids'})
 
     for epoch_temp in range(epochs):
@@ -347,7 +362,9 @@ def model_train(train_data, val_data, test_data, con_data, model_joint, args, lo
             policy_entropy = None
             if controller is not None:
                 batch_df, joint_log_prob, policy_entropy, augmentation_stats = controller.augment(
-                    batch_df, epoch_temp)
+                    batch_df, epoch_temp,
+                    item_embeddings=target_embedding.weight if target_embedding is not None else None,
+                )
 
             # ==============================
             # Step 3: Build Tensors
